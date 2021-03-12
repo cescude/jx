@@ -9,7 +9,7 @@ pub const JsonIterator = struct {
     allocator: *Allocator = undefined,
     
     extra_token: ?json.Token = undefined,
-    decoded_string: ?[]u8 = undefined,
+    value_string: ?[]u8 = undefined,
 
     pub const Error =
         std.os.ReadError ||
@@ -33,14 +33,14 @@ pub const JsonIterator = struct {
             .parser = json.StreamingParser.init(),
             .allocator = allocator,
             .extra_token = null,
-            .decoded_string = null,
+            .value_string = null,
         };
     }
 
     pub fn deinit(self: *JsonIterator) void {
-        if ( self.decoded_string ) |decoded| {
-            self.allocator.free(decoded);
-            self.decoded_string = null;
+        if ( self.value_string ) |value| {
+            self.allocator.free(value);
+            self.value_string = null;
         }
     }
 
@@ -53,30 +53,30 @@ pub const JsonIterator = struct {
             .Number => |n| {
                 const slice = n.slice(input, input.len-1);
 
-                if (self.decoded_string) |decoded| {
-                    self.allocator.free(decoded);
+                if (self.value_string) |value| {
+                    self.allocator.free(value);
                 }
 
-                var decoded = try self.allocator.dupe(u8, slice);
-                self.decoded_string = decoded;
-                return Token{ .Number = decoded };
+                var value = try self.allocator.dupe(u8, slice);
+                self.value_string = value;
+                return Token{ .Number = value };
             },
             .String => |s| {
                 const slice = s.slice(input, input.len-1);
                 
-                if ( self.decoded_string ) |decoded| {
-                    self.allocator.free(decoded);
+                if ( self.value_string ) |value| {
+                    self.allocator.free(value);
                 }
 
-                    // var decoded = try self.allocator.alloc(u8, s.decodedLength());
-                    // errdefer self.allocator.free(decoded);
-                    // try json.unescapeValidString(decoded, slice);
-                    // self.decoded_string = decoded;
-                    // return Token{ .String = decoded };
+                    // var value = try self.allocator.alloc(u8, s.decodedLength());
+                    // errdefer self.allocator.free(value);
+                    // try json.unescapeValidString(value, slice);
+                    // self.value_string = value;
+                    // return Token{ .String = value };
 
-                var decoded = try self.allocator.dupe(u8, slice);
-                self.decoded_string = decoded;
-                return Token { .String = decoded };
+                var value = try self.allocator.dupe(u8, slice);
+                self.value_string = value;
+                return Token { .String = value };
             },
             .True => return Token{ .Boolean = true },
             .False => return Token{ .Boolean = false },
@@ -99,7 +99,7 @@ pub const JsonIterator = struct {
                     return self.convertToken(token, input.items),
             }
         }
-        
+
         while (self.reader.readByte()) |byte| {
             input.append(byte) catch  return Error.ParsingError;
             

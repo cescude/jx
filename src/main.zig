@@ -12,7 +12,7 @@ pub fn main() !void {
         }
     }
     const allocator = &gpa.allocator;
-    
+
     var j = &JsonIterator.init(allocator, stdin);
     defer j.deinit();
 
