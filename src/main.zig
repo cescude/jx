@@ -2,26 +2,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const json = std.json;
-
-const test_payload =
-    \\ {
-    \\   "one": 1,
-    \\   "two": "two",
-    \\   "three": [ 1, 2, 3, 4, 5 ],
-    \\   "four": { "a": true, "z": false },
-    \\ }
-;
-
-test "scratch" {
-    var arr = ArrayList([]const u8).init(std.testing.allocator);
-    defer arr.deinit();
-    try arr.append("yes");
-    try arr.append("no");
-    var joined = try std.mem.join(std.testing.allocator, ".", arr.items);
-    defer std.testing.allocator.free(joined);
-    std.debug.print("{s}\n", .{joined});
-    std.testing.expect(true);
-}
+const stdout = std.io.getStdOut().writer();
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -40,17 +21,27 @@ pub fn main() !void {
         defer path.deinit();
 
         switch (start_token) {
-            .ObjectBegin => try processObject(allocator, j, &path),
-            .ArrayBegin => try processArray(allocator, j, &path),
+            .ObjectBegin => try processObject(allocator, j, &path, writeLine),
+            .ArrayBegin => try processArray(allocator, j, &path, writeLine),
             else => 
                 @panic("Not valid JSON"),
         }
     }
 }
 
+fn writeLine(prefix: []const u8, key: []const u8, val: []const u8) void {
+    if (prefix.len > 0) {
+        stdout.print("{s}.{s} {s}\n", .{prefix, key, val}) catch {};
+    } else {
+        stdout.print("{s} {s}\n", .{key, val}) catch {};
+    }
+}
+
+const process_op = fn(prefix: []const u8, key: []const u8, val: []const u8) void;
+
 const E = JsonIterator.Error || error{OutOfMemory};
 
-fn processArray(a: *Allocator, j: *JsonIterator, path: *ArrayList([]u8)) E!void {
+fn processArray(a: *Allocator, j: *JsonIterator, path: *ArrayList([]u8), proc_fn: process_op) E!void {
     var prefix = try std.mem.join(a, ".", path.items);
     defer a.free(prefix);
 
@@ -65,23 +56,17 @@ fn processArray(a: *Allocator, j: *JsonIterator, path: *ArrayList([]u8)) E!void 
         defer a.free(key);
 
         switch (val_token) {
-            .String, .Number => |v| std.debug.print("{s}.{d} {s}\n", .{prefix, index, v}),
-            .Boolean => |v| {
-                if (v) {
-                    std.debug.print("{s}.{d} {s}\n", .{prefix, index, "true"});
-                } else {
-                    std.debug.print("{s}.{d} {s}\n", .{prefix, index, "false"});
-                }
-            },
-            .Null => std.debug.print("{s}.{d} {s}\n", .{prefix, index, "null"}),
+            .String, .Number => |v| proc_fn(prefix, key, v),
+            .Boolean         => |v| proc_fn(prefix, key, if (v) "true" else "false"),
+            .Null            => proc_fn(prefix, key, "null"),
             .ObjectBegin => {
                 try path.append(key);
-                try processObject(a, j, path);
+                try processObject(a, j, path, proc_fn);
                 _ = path.pop();
             },
             .ArrayBegin => {
                 try path.append(key);
-                try processArray(a, j, path);
+                try processArray(a, j, path, proc_fn);
                 _ = path.pop();
             },
             .ObjectEnd, .ArrayEnd => @panic("Invalid JSON"),
@@ -91,7 +76,7 @@ fn processArray(a: *Allocator, j: *JsonIterator, path: *ArrayList([]u8)) E!void 
     }
 }
 
-fn processObject(a: *Allocator, j: *JsonIterator, path: *ArrayList([]u8)) E!void {
+fn processObject(a: *Allocator, j: *JsonIterator, path: *ArrayList([]u8), proc_fn: process_op) E!void {
 
     var prefix = try std.mem.join(a, ".", path.items);
     defer a.free(prefix);
@@ -112,23 +97,17 @@ fn processObject(a: *Allocator, j: *JsonIterator, path: *ArrayList([]u8)) E!void
         
         if (try j.next()) |val_token| {
             switch (val_token) {
-                .String, .Number => |v| std.debug.print("{s}.{s} {s}\n", .{prefix, key, v}),
-                .Boolean => |v| {
-                    if (v) {
-                        std.debug.print("{s}.{s} {s}\n", .{prefix, key, "true"});
-                    } else {
-                        std.debug.print("{s}.{s} {s}\n", .{prefix, key, "false"});
-                    }
-                },
-                .Null => std.debug.print("{s}.{s} {s}\n", .{prefix, key, "null"}),
+                .String, .Number => |v| proc_fn(prefix, key, v),
+                .Boolean         => |v| proc_fn(prefix, key, if (v) "true" else "false"),
+                .Null            => proc_fn(prefix, key, "null"),
                 .ObjectBegin => {
                     try path.append(key);
-                    try processObject(a, j, path);
+                    try processObject(a, j, path, proc_fn);
                     _ = path.pop();
                 },
                 .ArrayBegin => {
                     try path.append(key);
-                    try processArray(a, j, path);
+                    try processArray(a, j, path, proc_fn);
                     _ = path.pop();
                 },
                 .ObjectEnd, .ArrayEnd => @panic("Invalid JSON"),
