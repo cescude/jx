@@ -3,97 +3,121 @@ const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const JsonIterator = @import("json_iterator.zig").JsonIterator;
 
-const callback_fn = fn(prefix: []const u8, key: []const u8, val: []const u8) void;
+const callback_fn = fn (prefix: []const u8, key: []const u8, val: []const u8) void;
 
 // For recursive functions, can't infer the error type
-const Error = JsonIterator.Error || error{InvalidStart,OutOfMemory};
+const Error = JsonIterator.Error || error{ InvalidStart, OutOfMemory };
 
-pub fn explodeJson(a: *Allocator, j: *JsonIterator, cb: callback_fn) Error!void {
-    if (try j.next()) |start_token| {
-        var path = ArrayList([]u8).init(a);
-        defer path.deinit();
-
-        switch (start_token) {
-            .ObjectBegin => try processObject(a, j, &path, cb),
-            .ArrayBegin => try processArray(a, j, &path, cb),
-            else => return Error.InvalidStart,
+pub fn process(a: *Allocator, j: *JsonIterator, cb: callback_fn) !void {
+    var path = ArrayList([]u8).init(a);
+    defer {
+        for (path.items) |p| {
+            a.free(p);
         }
+        path.deinit();
     }
-}
 
-fn processArray(a: *Allocator, j: *JsonIterator, path: *ArrayList([]u8), cb: callback_fn) Error!void {
-    var prefix = try std.mem.join(a, ".", path.items);
-    defer a.free(prefix);
+    var indices = ArrayList(u32).init(a);
+    defer indices.deinit();
 
-    var index: u64 = 0;
-    while (try j.next()) |val_token| {
+    const State = enum { TopLevel, ParsingObject, ParsingArray };
 
-        if (val_token == JsonIterator.Token.ArrayEnd) {
-            return;
-        }
+    var states = ArrayList(State).init(a);
+    defer states.deinit();
 
-        var key = try std.fmt.allocPrint(a, "{d}", .{index});
-        defer a.free(key);
+    try states.append(State.TopLevel);
 
-        switch (val_token) {
-            .String, .Number => |v| cb(prefix, key, v),
-            .Boolean         => |v| cb(prefix, key, if (v) "true" else "false"),
-            .Null            => cb(prefix, key, "null"),
-            .ObjectBegin => {
-                try path.append(key);
-                try processObject(a, j, path, cb);
-                _ = path.pop();
+    while (try j.next()) |token| {
+        const current_state = states.items[states.items.len - 1];
+
+        switch (current_state) {
+            .TopLevel => {
+                switch (token) {
+                    .ObjectBegin => {
+                        try states.append(State.ParsingObject);
+                        try path.append(try a.dupe(u8, "root"));
+                        continue;
+                    },
+                    .ArrayBegin => {
+                        try states.append(State.ParsingArray);
+                        try path.append(try a.dupe(u8, "root"));
+                        try indices.append(0);
+                        continue;
+                    },
+                    else => @panic("TODO: Handle free-floating vals"),
+                }
             },
-            .ArrayBegin => {
-                try path.append(key);
-                try processArray(a, j, path, cb);
-                _ = path.pop();
+            .ParsingObject => {
+                if (token == JsonIterator.Token.ObjectEnd) {
+                    _ = states.pop(); // TODO: could this fail?
+                    a.free(path.pop());
+                    continue;
+                }
+
+                const prefix = try std.mem.join(a, ".", path.items[1..]);
+                defer a.free(prefix);
+
+                var key = try switch (token) {
+                    .String => |s| a.dupe(u8, s),
+                    else => @panic("Expected string for key in object!"),
+                };
+                defer a.free(key);
+
+                if (try j.next()) |val_token| {
+                    switch (val_token) {
+                        .String, .Number => |v| cb(prefix, key, v),
+                        .Boolean => |v| cb(prefix, key, if (v) "true" else "false"),
+                        .Null => cb(prefix, key, "null"),
+                        .ObjectBegin => {
+                            try states.append(State.ParsingObject);
+                            try path.append(try a.dupe(u8, key));
+                            continue;
+                        },
+                        .ArrayBegin => {
+                            try states.append(State.ParsingArray);
+                            try path.append(try a.dupe(u8, key));
+                            try indices.append(0);
+                            continue;
+                        },
+                        .ObjectEnd, .ArrayEnd => @panic("Invalid JSON"),
+                    }
+                } else @panic("Missing val in keyval pair!");
             },
-            .ObjectEnd, .ArrayEnd => @panic("Invalid JSON"),
-        }
+            .ParsingArray => {
+                if (token == JsonIterator.Token.ArrayEnd) {
+                    _ = states.pop(); // TODO: could this fail?
+                    a.free(path.pop());
+                    _ = indices.pop(); // TODO: could this fail?
+                    continue;
+                }
 
-        index += 1;
-    }
-}
+                var index = indices.pop();
+                try indices.append(index + 1);
 
-fn processObject(a: *Allocator, j: *JsonIterator, path: *ArrayList([]u8), cb: callback_fn) Error!void {
+                const prefix = try std.mem.join(a, ".", path.items[1..]);
+                defer a.free(prefix);
 
-    var prefix = try std.mem.join(a, ".", path.items);
-    defer a.free(prefix);
-    
-    while (try j.next()) |key_token| {
+                var key = try std.fmt.allocPrint(a, "{d}", .{index});
+                defer a.free(key);
 
-        if (key_token == JsonIterator.Token.ObjectEnd) {
-            return;
-        }
-        
-        // Objects are pairs of key/vals until we hit the end
-        
-        var key: []u8 = try switch (key_token) {
-            .String => |str| a.dupe(u8, str),
-            else => @panic("Expected string for key in object"),
-        };
-        defer a.free(key);
-        
-        if (try j.next()) |val_token| {
-            switch (val_token) {
-                .String, .Number => |v| cb(prefix, key, v),
-                .Boolean         => |v| cb(prefix, key, if (v) "true" else "false"),
-                .Null            => cb(prefix, key, "null"),
-                .ObjectBegin => {
-                    try path.append(key);
-                    try processObject(a, j, path, cb);
-                    _ = path.pop();
-                },
-                .ArrayBegin => {
-                    try path.append(key);
-                    try processArray(a, j, path, cb);
-                    _ = path.pop();
-                },
-                .ObjectEnd, .ArrayEnd => @panic("Invalid JSON"),
-            }
-        } else {
-            @panic("Missing value in keyval pair");
+                switch (token) {
+                    .String, .Number => |v| cb(prefix, key, v),
+                    .Boolean => |v| cb(prefix, key, if (v) "true" else "false"),
+                    .Null => cb(prefix, key, "null"),
+                    .ObjectBegin => {
+                        try states.append(State.ParsingObject);
+                        try path.append(try a.dupe(u8, key));
+                        continue;
+                    },
+                    .ArrayBegin => {
+                        try states.append(State.ParsingArray);
+                        try path.append(try a.dupe(u8, key));
+                        try indices.append(0);
+                        continue;
+                    },
+                    .ObjectEnd, .ArrayEnd => @panic("Invalid JSON"),
+                }
+            },
         }
     }
 }
