@@ -13,10 +13,12 @@ pub fn main() !void {
     }
     const allocator = &gpa.allocator;
 
-    var j = &JsonIterator.init(allocator, stdin);
+    var br = std.io.bufferedReader(stdin).reader();
+
+    var j = JsonIterator(@TypeOf(br)).init(allocator, br);
     defer j.deinit();
 
-    process(allocator, j, writeLine) catch |e| switch (e) {
+    process(allocator, @TypeOf(j), &j, writeLine) catch |e| switch (e) {
         else => std.debug.print("{}\n", .{e}),
     };
 }

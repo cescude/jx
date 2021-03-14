@@ -8,7 +8,7 @@ const callback_fn = fn (prefix: []const u8, key: []const u8, val: []const u8) vo
 // For recursive functions, can't infer the error type
 const Error = JsonIterator.Error || error{ InvalidStart, OutOfMemory };
 
-pub fn process(a: *Allocator, j: *JsonIterator, cb: callback_fn) !void {
+pub fn process(a: *Allocator, comptime JsonIteratorType: type, j: *JsonIteratorType, cb: callback_fn) !void {
     var path = ArrayList([]u8).init(a);
     defer {
         for (path.items) |p| {
@@ -48,7 +48,7 @@ pub fn process(a: *Allocator, j: *JsonIterator, cb: callback_fn) !void {
                 }
             },
             .ParsingObject => {
-                if (token == JsonIterator.Token.ObjectEnd) {
+                if (token == JsonIteratorType.Token.ObjectEnd) {
                     _ = states.pop(); // TODO: could this fail?
                     a.free(path.pop());
                     continue;
@@ -84,7 +84,7 @@ pub fn process(a: *Allocator, j: *JsonIterator, cb: callback_fn) !void {
                 } else @panic("Missing val in keyval pair!");
             },
             .ParsingArray => {
-                if (token == JsonIterator.Token.ArrayEnd) {
+                if (token == JsonIteratorType.Token.ArrayEnd) {
                     _ = states.pop(); // TODO: could this fail?
                     a.free(path.pop());
                     _ = indices.pop(); // TODO: could this fail?
