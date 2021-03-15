@@ -5,9 +5,6 @@ const JsonIterator = @import("json_iterator.zig").JsonIterator;
 
 const callback_fn = fn (prefix: []const u8, key: []const u8, val: []const u8) void;
 
-// For recursive functions, can't infer the error type
-const Error = JsonIterator.Error || error{ InvalidStart, OutOfMemory };
-
 pub fn process(a: *Allocator, comptime JsonIteratorType: type, j: *JsonIteratorType, cb: callback_fn) !void {
     var path = ArrayList([]u8).init(a);
     defer {
@@ -44,7 +41,7 @@ pub fn process(a: *Allocator, comptime JsonIteratorType: type, j: *JsonIteratorT
                         try indices.append(0);
                         continue;
                     },
-                    else => @panic("TODO: Handle free-floating vals"),
+                    else => return error.NotJson,
                 }
             },
             .ParsingObject => {

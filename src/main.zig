@@ -1,6 +1,6 @@
 const std = @import("std");
 const JsonIterator = @import("json_iterator.zig").JsonIterator;
-const process = @import("explode_json.zig").process;
+const explodeJson = @import("explode_json.zig");
 const stdout = std.io.getStdOut().writer();
 const stdin = std.io.getStdIn().reader();
 
@@ -18,7 +18,8 @@ pub fn main() !void {
     var j = JsonIterator(@TypeOf(br)).init(allocator, br);
     defer j.deinit();
 
-    process(allocator, @TypeOf(j), &j, writeLine) catch |e| switch (e) {
+    explodeJson.process(allocator, @TypeOf(j), &j, writeLine) catch |e| switch (e) {
+        error.InvalidTopLevel => std.debug.print("...Implode?\n", .{}),
         else => std.debug.print("{}\n", .{e}),
     };
 }
