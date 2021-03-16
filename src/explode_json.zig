@@ -3,9 +3,30 @@ const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const JsonIterator = @import("json_iterator.zig").JsonIterator;
 
-const callback_fn = fn (prefix: []const u8, key: []const u8, val: []const u8) void;
+fn LineWriter(comptime WriterType: type) type {
+    return struct {
+        writer: WriterType,
 
-pub fn process(a: *Allocator, comptime JsonIteratorType: type, j: *JsonIteratorType, cb: callback_fn) !void {
+        const Self = @This();
+
+        pub fn writeLine(self: *Self, prefix: []const u8, key: []const u8, val: []const u8) void {
+            if (prefix.len > 0) {
+                self.writer.print("{s}.{s}  {s}\n", .{ prefix, key, val }) catch {};
+            } else {
+                self.writer.print("{s}  {s}\n", .{ key, val }) catch {};
+            }
+        }
+    };
+}
+
+pub fn process(a: *Allocator, comptime ReaderType: type, reader: ReaderType, comptime WriterType: type, writer: WriterType) !void {
+    comptime const LineWriterType = LineWriter(WriterType);
+    var w = LineWriterType{ .writer = writer };
+
+    comptime const JsonIteratorType = JsonIterator(ReaderType);
+    var j = JsonIteratorType.init(a, reader);
+    defer j.deinit();
+
     var path = ArrayList([]u8).init(a);
     defer {
         for (path.items) |p| {
@@ -62,9 +83,9 @@ pub fn process(a: *Allocator, comptime JsonIteratorType: type, j: *JsonIteratorT
 
                 if (try j.next()) |val_token| {
                     switch (val_token) {
-                        .String, .Number => |v| cb(prefix, key, v),
-                        .Boolean => |v| cb(prefix, key, if (v) "true" else "false"),
-                        .Null => cb(prefix, key, "null"),
+                        .String, .Number => |v| w.writeLine(prefix, key, v),
+                        .Boolean => |v| w.writeLine(prefix, key, if (v) "true" else "false"),
+                        .Null => w.writeLine(prefix, key, "null"),
                         .ObjectBegin => {
                             try states.append(State.ParsingObject);
                             try path.append(try a.dupe(u8, key));
@@ -98,9 +119,9 @@ pub fn process(a: *Allocator, comptime JsonIteratorType: type, j: *JsonIteratorT
                 defer a.free(key);
 
                 switch (token) {
-                    .String, .Number => |v| cb(prefix, key, v),
-                    .Boolean => |v| cb(prefix, key, if (v) "true" else "false"),
-                    .Null => cb(prefix, key, "null"),
+                    .String, .Number => |v| w.writeLine(prefix, key, v),
+                    .Boolean => |v| w.writeLine(prefix, key, if (v) "true" else "false"),
+                    .Null => w.writeLine(prefix, key, "null"),
                     .ObjectBegin => {
                         try states.append(State.ParsingObject);
                         try path.append(try a.dupe(u8, key));
