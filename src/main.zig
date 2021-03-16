@@ -19,10 +19,10 @@ pub fn main() !void {
     defer buffered_writer.flush() catch {};
     var bw = buffered_writer.writer();
 
-    comptime const ExplodeProcessorType = explodeJson.Processor(@TypeOf(br), @TypeOf(bw));
+    const ExplodeProcessorType = explodeJson.Processor(@TypeOf(br), @TypeOf(bw));
 
-    ExplodeProcessorType.process(allocator, br, &bw) catch |e| switch (e) {
-        error.InvalidTopLevel => std.debug.print("...Implode?\n", .{}),
-        else => std.debug.print("{}\n", .{e}),
+    ExplodeProcessorType.process(allocator, &br, &bw) catch |e| switch (e) {
+        error.InvalidTopLevel => std.debug.print("...TODO: Implode?\n", .{}),
+        else => {}, //std.debug.print("{}\n", .{e}),
     };
 }

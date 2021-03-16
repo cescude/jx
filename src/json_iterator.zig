@@ -5,12 +5,12 @@ const json = std.json;
 
 pub fn JsonIterator(comptime ReaderType: type) type {
     return struct {
-        reader: ReaderType = undefined,
-        parser: json.StreamingParser = undefined,
-        allocator: *Allocator = undefined,
+        reader: *ReaderType,
+        parser: json.StreamingParser,
+        allocator: *Allocator,
 
-        extra_token: ?json.Token = undefined,
-        value_string: ?[]u8 = undefined,
+        extra_token: ?json.Token,
+        value_string: ?[]u8,
 
         const Self = @This();
 
@@ -25,7 +25,7 @@ pub fn JsonIterator(comptime ReaderType: type) type {
             Null,
         };
 
-        pub fn init(allocator: *Allocator, rdr: ReaderType) Self {
+        pub fn init(allocator: *Allocator, rdr: *ReaderType) Self {
             return .{
                 .reader = rdr,
                 .parser = json.StreamingParser.init(),

@@ -20,12 +20,13 @@ fn LineWriter(comptime WriterType: type) type {
 }
 
 pub fn Processor(comptime ReaderType: type, comptime WriterType: type) type {
+    comptime const LineWriterType = LineWriter(WriterType);
+    comptime const JsonIteratorType = JsonIterator(ReaderType);
+
     return struct {
-        pub fn process(a: *Allocator, reader: ReaderType, writer: *WriterType) !void {
-            comptime const LineWriterType = LineWriter(WriterType);
+        pub fn process(a: *Allocator, reader: *ReaderType, writer: *WriterType) !void {
             var w = LineWriterType{ .writer = writer };
 
-            comptime const JsonIteratorType = JsonIterator(ReaderType);
             var j = JsonIteratorType.init(a, reader);
             defer j.deinit();
 
