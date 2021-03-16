@@ -14,6 +14,10 @@ pub fn build(b: *std.build.Builder) void {
     const exe = b.addExecutable("jx", "src/main.zig");
     exe.setTarget(target);
     exe.setBuildMode(mode);
+    switch (mode) {
+        .ReleaseFast => exe.linkSystemLibrary("c"), // needed for the c_allocator, apparently
+        else => {},
+    }
     exe.install();
 
     const run_cmd = exe.run();
