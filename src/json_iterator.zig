@@ -3,6 +3,17 @@ const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const json = std.json;
 
+pub const Token = union(enum) {
+    ObjectBegin,
+    ObjectEnd,
+    ArrayBegin,
+    ArrayEnd,
+    Number: []const u8,
+    String: []const u8,
+    Boolean: bool,
+    Null,
+};
+
 pub fn JsonIterator(comptime ReaderType: type) type {
     return struct {
         reader: *ReaderType,
@@ -13,17 +24,6 @@ pub fn JsonIterator(comptime ReaderType: type) type {
         value_string: ?[]u8,
 
         const Self = @This();
-
-        pub const Token = union(enum) {
-            ObjectBegin,
-            ObjectEnd,
-            ArrayBegin,
-            ArrayEnd,
-            Number: []const u8,
-            String: []const u8,
-            Boolean: bool,
-            Null,
-        };
 
         pub fn init(allocator: *Allocator, rdr: *ReaderType) Self {
             return .{

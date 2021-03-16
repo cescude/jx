@@ -1,7 +1,10 @@
 const std = @import("std");
+
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
+
 const JsonIterator = @import("json_iterator.zig").JsonIterator;
+const JsonToken = @import("json_iterator.zig").Token;
 
 fn LineWriter(comptime WriterType: type) type {
     return struct {
@@ -69,7 +72,7 @@ pub fn Processor(comptime ReaderType: type, comptime WriterType: type) type {
                         }
                     },
                     .ParsingObject => {
-                        if (token == JsonIteratorType.Token.ObjectEnd) {
+                        if (token == JsonToken.ObjectEnd) {
                             _ = states.pop(); // TODO: could this fail?
                             a.free(path.pop());
                             continue;
@@ -105,7 +108,7 @@ pub fn Processor(comptime ReaderType: type, comptime WriterType: type) type {
                         } else @panic("Missing val in keyval pair!");
                     },
                     .ParsingArray => {
-                        if (token == JsonIteratorType.Token.ArrayEnd) {
+                        if (token == JsonToken.ArrayEnd) {
                             _ = states.pop(); // TODO: could this fail?
                             a.free(path.pop());
                             _ = indices.pop(); // TODO: could this fail?
