@@ -12,19 +12,31 @@ fn LineWriter(comptime WriterType: type) type {
 
         const Self = @This();
 
-        pub fn writeLine(self: *Self, prefix: []const u8, key: []const u8, val: []const u8) void {
+        pub fn writeLine(self: *Self, prefix: []const u8, key: []const u8, val: []const u8, quote_val: bool) !void {
+
+            // Looks like: <prefix>.<key>  <val>
+            //         or: <prefix>.<key>  "<val>"
+            //         or: <key>  <val>
+            //         or: <key>  "<val>"
+
             if (prefix.len > 0) {
-                self.writer.print("{s}.{s}  {s}\n", .{ prefix, key, val }) catch {};
+                try self.writer.print("{s}.", .{prefix});
+            }
+
+            try self.writer.print("{s}  ", .{key});
+
+            if (quote_val) {
+                try self.writer.print("\"{s}\"\n", .{val});
             } else {
-                self.writer.print("{s}  {s}\n", .{ key, val }) catch {};
+                try self.writer.print("{s}\n", .{val});
             }
         }
     };
 }
 
 pub fn Processor(comptime ReaderType: type, comptime WriterType: type) type {
-    comptime const LineWriterType = LineWriter(WriterType);
-    comptime const JsonIteratorType = JsonIterator(ReaderType);
+    const LineWriterType = LineWriter(WriterType);
+    const JsonIteratorType = JsonIterator(ReaderType);
 
     return struct {
         pub fn process(a: *Allocator, reader: *ReaderType, writer: *WriterType) !void {
@@ -89,9 +101,10 @@ pub fn Processor(comptime ReaderType: type, comptime WriterType: type) type {
 
                         if (try j.next()) |val_token| {
                             switch (val_token) {
-                                .String, .Number => |v| w.writeLine(prefix, key, v),
-                                .Boolean => |v| w.writeLine(prefix, key, if (v) "true" else "false"),
-                                .Null => w.writeLine(prefix, key, "null"),
+                                .String => |v| try w.writeLine(prefix, key, v, true),
+                                .Number => |v| try w.writeLine(prefix, key, v, false),
+                                .Boolean => |v| try w.writeLine(prefix, key, if (v) "true" else "false", false),
+                                .Null => try w.writeLine(prefix, key, "null", false),
                                 .ObjectBegin => {
                                     try states.append(State.ParsingObject);
                                     try path.append(try a.dupe(u8, key));
@@ -125,9 +138,10 @@ pub fn Processor(comptime ReaderType: type, comptime WriterType: type) type {
                         defer a.free(key);
 
                         switch (token) {
-                            .String, .Number => |v| w.writeLine(prefix, key, v),
-                            .Boolean => |v| w.writeLine(prefix, key, if (v) "true" else "false"),
-                            .Null => w.writeLine(prefix, key, "null"),
+                            .String => |v| try w.writeLine(prefix, key, v, true),
+                            .Number => |v| try w.writeLine(prefix, key, v, false),
+                            .Boolean => |v| try w.writeLine(prefix, key, if (v) "true" else "false", false),
+                            .Null => try w.writeLine(prefix, key, "null", false),
                             .ObjectBegin => {
                                 try states.append(State.ParsingObject);
                                 try path.append(try a.dupe(u8, key));
