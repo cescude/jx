@@ -8,7 +8,7 @@ const JsonToken = @import("json_iterator.zig").Token;
 
 fn LineWriter(comptime WriterType: type) type {
     return struct {
-        writer: *WriterType,
+        writer: *const WriterType,
 
         const Self = @This();
 
@@ -39,7 +39,7 @@ pub fn Processor(comptime ReaderType: type, comptime WriterType: type) type {
     const JsonIteratorType = JsonIterator(ReaderType);
 
     return struct {
-        pub fn process(a: *Allocator, reader: *ReaderType, writer: *WriterType) !void {
+        pub fn process(a: *Allocator, reader: *ReaderType, writer: *const WriterType) !void {
             var w = LineWriterType{ .writer = writer };
 
             var j = JsonIteratorType.init(a, reader);

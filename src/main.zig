@@ -17,14 +17,10 @@ pub fn main() !void {
     var buffered_reader = std.io.bufferedReader(stdin);
     var br = buffered_reader.reader();
 
-    var buffered_writer = std.io.bufferedWriter(stdout);
-    defer buffered_writer.flush() catch {};
-    var bw = buffered_writer.writer();
-
-    const ExplodeProcessorType = explodeJson.Processor(@TypeOf(br), @TypeOf(bw));
+    const ExplodeProcessorType = explodeJson.Processor(@TypeOf(br), @TypeOf(stdout));
 
     while (true) {
-        ExplodeProcessorType.process(allocator, &br, &bw) catch |e| switch (e) {
+        ExplodeProcessorType.process(allocator, &br, &stdout) catch |e| switch (e) {
             // Support reading multiple objects from the same stream
             error.EndOfTopLevel => continue,
 
@@ -37,7 +33,7 @@ pub fn main() !void {
             error.EndOfStream => break,
             else => {
                 std.debug.print("ERROR: {}\n", .{e});
-                break;
+                continue;
             },
         };
     }
