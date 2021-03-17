@@ -87,6 +87,11 @@ pub fn Processor(comptime ReaderType: type, comptime WriterType: type) type {
                         if (token == JsonToken.ObjectEnd) {
                             _ = states.pop(); // TODO: could this fail?
                             a.free(path.pop());
+
+                            if (path.items.len == 0) {
+                                return error.EndOfTopLevel;
+                            }
+
                             continue;
                         }
 
@@ -125,6 +130,11 @@ pub fn Processor(comptime ReaderType: type, comptime WriterType: type) type {
                             _ = states.pop(); // TODO: could this fail?
                             a.free(path.pop());
                             _ = indices.pop(); // TODO: could this fail?
+
+                            if (path.items.len == 0) {
+                                return error.EndOfTopLevel;
+                            }
+
                             continue;
                         }
 

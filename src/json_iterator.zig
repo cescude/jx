@@ -108,9 +108,7 @@ pub fn JsonIterator(comptime ReaderType: type) type {
                     return self.convertToken(token, input.items);
                 }
             } else |err| {
-                if (err != error.EndOfStream) {
-                    return err;
-                }
+                return err;
             }
 
             if (self.parser.complete) {

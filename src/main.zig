@@ -23,8 +23,22 @@ pub fn main() !void {
 
     const ExplodeProcessorType = explodeJson.Processor(@TypeOf(br), @TypeOf(bw));
 
-    ExplodeProcessorType.process(allocator, &br, &bw) catch |e| switch (e) {
-        error.InvalidTopLevel => std.debug.print("...TODO: Implode?\n", .{}),
-        else => {}, //std.debug.print("{}\n", .{e}),
-    };
+    while (true) {
+        ExplodeProcessorType.process(allocator, &br, &bw) catch |e| switch (e) {
+            // Support reading multiple objects from the same stream
+            error.EndOfTopLevel => continue,
+
+            // Support skipping over garbage data, for example if tailing data
+            // that's missing the top of the JSON.
+            //
+            //     tail -F items.json | jx
+            //
+            error.NotJson, error.InvalidTopLevel => continue,
+            error.EndOfStream => break,
+            else => {
+                std.debug.print("ERROR: {}\n", .{e});
+                break;
+            },
+        };
+    }
 }
