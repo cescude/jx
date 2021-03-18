@@ -12,6 +12,7 @@ pub const Token = union(enum) {
     String: []const u8,
     Boolean: bool,
     Null,
+    NonSense: struct { err: anyerror, data: []const u8 },
 };
 
 pub fn JsonIterator(comptime ReaderType: type) type {
@@ -82,6 +83,16 @@ pub fn JsonIterator(comptime ReaderType: type) type {
             }
         }
 
+        fn convertNonsense(self: *Self, err: anyerror, input: []const u8) !?Token {
+            if (self.value_string) |value| {
+                self.allocator.free(value);
+            }
+
+            var value = try self.allocator.dupe(u8, input);
+            self.value_string = value;
+            return Token{ .NonSense = .{ .err = err, .data = value } };
+        }
+
         pub fn next(self: *Self) !?Token {
             var input = ArrayList(u8).init(self.allocator);
             defer input.deinit();
@@ -102,7 +113,15 @@ pub fn JsonIterator(comptime ReaderType: type) type {
                 var t0: ?json.Token = undefined;
                 var t1: ?json.Token = undefined;
 
-                try self.parser.feed(byte, &t0, &t1);
+                self.parser.feed(byte, &t0, &t1) catch |err| {
+                    var nonsense_token = self.convertNonsense(err, input.items);
+
+                    // Reinitialize our parser!
+                    self.parser = json.StreamingParser.init();
+
+                    return nonsense_token;
+                };
+
                 if (t0) |token| {
                     self.extra_token = t1; // Might could be null, which is ok
                     return self.convertToken(token, input.items);

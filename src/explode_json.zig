@@ -9,6 +9,7 @@ const JsonToken = @import("json_iterator.zig").Token;
 fn LineWriter(comptime WriterType: type) type {
     return struct {
         buffered_writer: BufferedWriter,
+        need_to_cleanup_nonsense: bool = false,
 
         const Self = @This();
         const BufferedWriter = std.io.BufferedWriter(1024 * 2, WriterType);
@@ -24,6 +25,10 @@ fn LineWriter(comptime WriterType: type) type {
         }
 
         pub fn write(self: *Self, prefix: []const u8, key: []const u8, val: []const u8, quote_val: bool) !void {
+            if (self.need_to_cleanup_nonsense) {
+                try self.buffered_writer.writer().print("\n", .{});
+                self.need_to_cleanup_nonsense = false;
+            }
 
             // Looks like: <prefix>.<key>  <val>
             //         or: <prefix>.<key>  "<val>"
@@ -44,6 +49,12 @@ fn LineWriter(comptime WriterType: type) type {
 
             // Always flush after the line
             try self.buffered_writer.flush();
+        }
+
+        pub fn writeNonsense(self: *Self, str: []const u8) !void {
+            self.need_to_cleanup_nonsense = true;
+            try self.buffered_writer.writer().writeAll(str);
+            try self.buffered_writer.flush(); // Maybe only run if we can find a \n here
         }
     };
 }
@@ -95,6 +106,11 @@ pub fn Processor(comptime ReaderType: type, comptime WriterType: type) type {
                                 try indices.append(0);
                                 continue;
                             },
+                            .NonSense => |n| {
+                                // Put up with nonsense at the toplevel only
+                                try w.writeNonsense(n.data);
+                                continue;
+                            },
                             else => return error.NotJson,
                         }
                     },
@@ -137,6 +153,7 @@ pub fn Processor(comptime ReaderType: type, comptime WriterType: type) type {
                                     continue;
                                 },
                                 .ObjectEnd, .ArrayEnd => @panic("Invalid JSON"),
+                                .NonSense => |n| return n.err, // don't put up with this in the middle of an object
                             }
                         } else @panic("Missing val in keyval pair!");
                     },
@@ -179,6 +196,7 @@ pub fn Processor(comptime ReaderType: type, comptime WriterType: type) type {
                                 continue;
                             },
                             .ObjectEnd, .ArrayEnd => @panic("Invalid JSON"),
+                            .NonSense => |n| return n.err, // don't put up with this in the middle of an object
                         }
                     },
                 }
