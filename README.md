@@ -1,5 +1,14 @@
 # jx
 
+## Building, installing
+
+Requires zig (developed with version 0.8.0-\*). This installs `jx` as a binary
+under `/usr/local/bin`:
+
+    zig build -Drelease-fast=true --prefix /usr/local
+
+You can also just `zig build` and run the debug build `./zig-cache/bin/jx`.
+
 ## Synopsis
 
 Assuming a JSON file:
@@ -28,22 +37,24 @@ Pipe JSON through `jx` to provide a grep'able interface to the data:
     places.0  "here"
     places.1  "there"
     places.2  "everywhere"
-
-This doesn't require the stream to complete before providing output, so it's
-suitable for viewing data as it's being downloaded (TODO: allow multiple objects
-in a stream):
-
-    $ tail -F /tmp/large_payload.json | jx
-    # ... open another terminal ...
-    $ scp remote_computer:/logs/large_payload.json /tmp
-
-More examples:
-
     $ jx < test.json | grep name
     people.0.name  "Alice"
     people.1.name  "Bob"
     people.2.name  "Cathy"
-    
+    $
+
+This doesn't require the stream to complete before providing output, so it's
+suitable for viewing data as it's being downloaded (using `tail -F <filename>`
+to continually monitor a file):
+
+    $ tail -F /tmp/test.json | jx | grep age
+    ... open another terminal ...
+
+    $ curl -s http://localhost:8080/test.json > /tmp/test.json
+    ... ages show up in prior terminal ...
+
+More examples:
+
     $ jx < test.json | awk '/age/ {print $1, $2+7}' # or whatever
     people.0.age 47
     people.1.age 48
