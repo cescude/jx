@@ -12,13 +12,14 @@ pub const Token = union(enum) {
     String: []const u8,
     Boolean: bool,
     Null,
-    NonSense: struct { err: anyerror, data: []const u8 },
+    NonSense: []const u8,
 };
 
 pub fn JsonIterator(comptime ReaderType: type) type {
     return struct {
         reader: *ReaderType,
         parser: json.StreamingParser,
+        parsing_nonsense: bool,
         allocator: *Allocator,
 
         extra_token: ?json.Token,
@@ -30,6 +31,7 @@ pub fn JsonIterator(comptime ReaderType: type) type {
             return .{
                 .reader = rdr,
                 .parser = json.StreamingParser.init(),
+                .parsing_nonsense = true,
                 .allocator = allocator,
                 .extra_token = null,
                 .value_string = null,
@@ -83,14 +85,21 @@ pub fn JsonIterator(comptime ReaderType: type) type {
             }
         }
 
-        fn convertNonsense(self: *Self, err: anyerror, input: []const u8) !?Token {
+        fn convertNonsense(self: *Self, input: []const u8) !?Token {
+            var values_to_strip: []const u8 = &[4]u8{ 0x09, 0x0A, 0x0D, 0x20 };
+            const slice = std.mem.trimLeft(u8, input[0 .. input.len - 1], values_to_strip);
+
+            if (slice.len == 0) {
+                return null; // No nonsense
+            }
+
             if (self.value_string) |value| {
                 self.allocator.free(value);
             }
 
-            var value = try self.allocator.dupe(u8, input);
+            var value = try self.allocator.dupe(u8, slice);
             self.value_string = value;
-            return Token{ .NonSense = .{ .err = err, .data = value } };
+            return Token{ .NonSense = value };
         }
 
         pub fn next(self: *Self) !?Token {
@@ -110,17 +119,29 @@ pub fn JsonIterator(comptime ReaderType: type) type {
             while (self.reader.readByte()) |byte| {
                 try input.append(byte);
 
+                var nonsense: ?Token = null;
+
+                if (self.parsing_nonsense) {
+                    switch (byte) {
+                        '{', '[' => {
+                            self.parsing_nonsense = false;
+                            nonsense = try self.convertNonsense(input.items);
+
+                            // Drop down to feed to the parser!
+                        },
+                        else => continue,
+                    }
+                }
+
                 var t0: ?json.Token = undefined;
                 var t1: ?json.Token = undefined;
 
-                self.parser.feed(byte, &t0, &t1) catch |err| {
-                    var nonsense_token = self.convertNonsense(err, input.items);
+                try self.parser.feed(byte, &t0, &t1);
 
-                    // Reinitialize our parser!
-                    self.parser = json.StreamingParser.init();
-
-                    return nonsense_token;
-                };
+                if (nonsense) |n| {
+                    self.extra_token = t0; // This will be the opening brace/bracket
+                    return nonsense;
+                }
 
                 if (t0) |token| {
                     self.extra_token = t1; // Might could be null, which is ok

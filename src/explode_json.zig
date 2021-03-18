@@ -108,7 +108,7 @@ pub fn Processor(comptime ReaderType: type, comptime WriterType: type) type {
                             },
                             .NonSense => |n| {
                                 // Put up with nonsense at the toplevel only
-                                try w.writeNonsense(n.data);
+                                try w.writeNonsense(n);
                                 continue;
                             },
                             else => return error.NotJson,
@@ -152,8 +152,7 @@ pub fn Processor(comptime ReaderType: type, comptime WriterType: type) type {
                                     try indices.append(0);
                                     continue;
                                 },
-                                .ObjectEnd, .ArrayEnd => @panic("Invalid JSON"),
-                                .NonSense => |n| return n.err, // don't put up with this in the middle of an object
+                                .ObjectEnd, .ArrayEnd, .NonSense => @panic("Invalid JSON"),
                             }
                         } else @panic("Missing val in keyval pair!");
                     },
@@ -195,8 +194,7 @@ pub fn Processor(comptime ReaderType: type, comptime WriterType: type) type {
                                 try indices.append(0);
                                 continue;
                             },
-                            .ObjectEnd, .ArrayEnd => @panic("Invalid JSON"),
-                            .NonSense => |n| return n.err, // don't put up with this in the middle of an object
+                            .ObjectEnd, .ArrayEnd, .NonSense => @panic("Invalid JSON"),
                         }
                     },
                 }
