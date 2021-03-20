@@ -21,20 +21,8 @@ pub fn main() !void {
 
     while (true) {
         ExplodeProcessorType.process(allocator, &br, &stdout) catch |e| switch (e) {
-            // Support reading multiple objects from the same stream
-            error.EndOfTopLevel => continue,
-
-            // Support skipping over garbage data, for example if tailing data
-            // that's missing the top of the JSON.
-            //
-            //     tail -F items.json | jx
-            //
-            error.NotJson, error.InvalidTopLevel => continue,
             error.EndOfStream => break,
-            else => {
-                std.debug.print("ERROR: {}\n", .{e});
-                continue;
-            },
+            else => std.debug.print("ERROR: {}\n", .{e}),
         };
     }
 }

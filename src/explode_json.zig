@@ -64,6 +64,8 @@ pub fn Processor(comptime ReaderType: type, comptime WriterType: type) type {
     const JsonIteratorType = JsonIterator(ReaderType);
 
     return struct {
+        const State = enum { TopLevel, ParsingObject, ParsingArray };
+
         pub fn process(a: *Allocator, reader: *ReaderType, writer: *const WriterType) !void {
             var w = LineWriterType.init(writer);
             defer w.deinit();
@@ -81,8 +83,6 @@ pub fn Processor(comptime ReaderType: type, comptime WriterType: type) type {
 
             var indices = ArrayList(u32).init(a);
             defer indices.deinit();
-
-            const State = enum { TopLevel, ParsingObject, ParsingArray };
 
             var states = ArrayList(State).init(a);
             defer states.deinit();
@@ -111,7 +111,7 @@ pub fn Processor(comptime ReaderType: type, comptime WriterType: type) type {
                                 try w.writeNonsense(n);
                                 continue;
                             },
-                            else => return error.NotJson,
+                            else => @panic("We really shouldn't be getting anything else here"),
                         }
                     },
                     .ParsingObject => {
@@ -120,7 +120,7 @@ pub fn Processor(comptime ReaderType: type, comptime WriterType: type) type {
                             a.free(path.pop());
 
                             if (path.items.len == 0) {
-                                return error.EndOfTopLevel;
+                                j.reset();
                             }
 
                             continue;
@@ -129,9 +129,9 @@ pub fn Processor(comptime ReaderType: type, comptime WriterType: type) type {
                         const prefix = try std.mem.join(a, ".", path.items[1..]);
                         defer a.free(prefix);
 
-                        var key = try switch (token) {
-                            .String => |s| a.dupe(u8, s),
-                            else => @panic("Expected string for key in object!"),
+                        var key = switch (token) {
+                            .String => |s| try a.dupe(u8, s),
+                            else => return error.ParsingError,
                         };
                         defer a.free(key);
 
@@ -152,9 +152,9 @@ pub fn Processor(comptime ReaderType: type, comptime WriterType: type) type {
                                     try indices.append(0);
                                     continue;
                                 },
-                                .ObjectEnd, .ArrayEnd, .NonSense => @panic("Invalid JSON"),
+                                .ObjectEnd, .ArrayEnd, .NonSense => return error.ParsingError,
                             }
-                        } else @panic("Missing val in keyval pair!");
+                        } else return error.EndOfStream;
                     },
                     .ParsingArray => {
                         if (token == JsonToken.ArrayEnd) {
@@ -163,7 +163,7 @@ pub fn Processor(comptime ReaderType: type, comptime WriterType: type) type {
                             _ = indices.pop(); // TODO: could this fail?
 
                             if (path.items.len == 0) {
-                                return error.EndOfTopLevel;
+                                j.reset();
                             }
 
                             continue;
@@ -194,11 +194,13 @@ pub fn Processor(comptime ReaderType: type, comptime WriterType: type) type {
                                 try indices.append(0);
                                 continue;
                             },
-                            .ObjectEnd, .ArrayEnd, .NonSense => @panic("Invalid JSON"),
+                            .ObjectEnd, .ArrayEnd, .NonSense => return error.ParsingError,
                         }
                     },
                 }
             }
+
+            return error.EndOfStream;
         }
     };
 }

@@ -3,6 +3,10 @@ const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const json = std.json;
 
+const test_allocator = std.testing.allocator;
+const expect = std.testing.expect;
+const expectEqual = std.testing.expectEqual;
+
 pub const Token = union(enum) {
     ObjectBegin,
     ObjectEnd,
@@ -14,6 +18,8 @@ pub const Token = union(enum) {
     Null,
     NonSense: []const u8,
 };
+
+const Error = error{ ReadError, OutOfMemory, ParsingError };
 
 pub fn JsonIterator(comptime ReaderType: type) type {
     return struct {
@@ -43,6 +49,14 @@ pub fn JsonIterator(comptime ReaderType: type) type {
                 self.allocator.free(value);
                 self.value_string = null;
             }
+        }
+
+        pub fn reset(self: *Self) void {
+            self.deinit();
+            self.parser.reset();
+            self.parsing_nonsense = true;
+            self.extra_token = null;
+            self.value_string = null;
         }
 
         fn convertToken(self: *Self, t: json.Token, input: []const u8) !?Token {
@@ -102,7 +116,7 @@ pub fn JsonIterator(comptime ReaderType: type) type {
             return Token{ .NonSense = value };
         }
 
-        pub fn next(self: *Self) !?Token {
+        pub fn next(self: *Self) Error!?Token {
             var input = ArrayList(u8).init(self.allocator);
             defer input.deinit();
 
@@ -136,7 +150,9 @@ pub fn JsonIterator(comptime ReaderType: type) type {
                 var t0: ?json.Token = undefined;
                 var t1: ?json.Token = undefined;
 
-                try self.parser.feed(byte, &t0, &t1);
+                self.parser.feed(byte, &t0, &t1) catch {
+                    return error.ParsingError;
+                };
 
                 if (nonsense) |n| {
                     self.extra_token = t0; // This will be the opening brace/bracket
@@ -148,7 +164,10 @@ pub fn JsonIterator(comptime ReaderType: type) type {
                     return self.convertToken(token, input.items);
                 }
             } else |err| {
-                return err;
+                if (err == error.EndOfStream) {
+                    return null;
+                }
+                return error.ReadError;
             }
 
             if (self.parser.complete) {
